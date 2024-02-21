@@ -1,17 +1,16 @@
-%！！！程序运行中由于需要滤波操作，如果峰值位于前5％或者最后5％会被滤除，使用时需注意
 clc;
 clear;
 close all;
 tic
 %%
-    fs=10;%采样频率，单位Hz
-    r_um=50;%用来框选的圆的半径,单位um
-    pixsize=0.425;%像素尺寸大小，单位um/pix
-    thresh=0.3;%colormap中最大值白色对应的ΔF/F0
-    thresh_select=0.12;%荧光区域选取阈值
-    bp1=1.5;%拟合的断点1
-    bp2=5;%拟合的断点2
-%%%%%%%%%%%%%%%%%%%%%%%以上为可调参数%%%%%%%%%%%%%%%%%%%%%%%
+    fs=10;%Sampling frequency when collecting images(Hz)
+    r_um=50;%The radius of the circle used for framing,(um)
+    pixsize=0.425;%Pixel size，（um/pix）
+    thresh=0.3;%The maximum white value in colormap corresponds to ΔF/F0
+    thresh_select=0.12;%Fluorescence region selection threshold
+    bp1=1.5;%Breakpoint 1 for calculating photobleaching
+    bp2=5;%Breakpoint 2 for calculating photobleaching
+%%%%%%%%%%%%%%%%The above are adjustable parameters%%%%%%%%%%%%%%%%%%
 folderpath=uigetdir;
 namelist = dir([folderpath,'\*.tif']);
 r_pix=r_um/pixsize;
@@ -19,10 +18,10 @@ dt=1/fs;
 dtt=1/fs/30;
 %%
 for n=1:length(namelist)
-    %图像读取
+    %Image Loading
     Info=imfinfo([namelist(n).folder,'\',namelist(n).name]);
     format=Info.Format;
-    Slice=size(Info,1);                                          %%获取图片z向帧数
+    Slice=size(Info,1);                                          %%Get the number of frames in the z direction of the image
     Width=Info.Width;
     Height=Info.Height;
     t=0:dt:(Slice-1)/fs;
@@ -33,7 +32,7 @@ for n=1:length(namelist)
     toc
     
     %%
-    %最大荧光变化展示-高精度版
+    % Maximum Fluorescence Change Display - High Precision Version
     t_img_bp=bp1/dt:bp2/dt-dt;
     bas=zeros(Height,Width,length(t_img_bp));
     bas_full=zeros(Height,Width,Slice);
@@ -44,40 +43,20 @@ for n=1:length(namelist)
             bas_start=bas(i,j,1)-bp1/dt*dif;
             bas_end=bas(i,j,end)+(Slice-bp2/dt-1)*dif;
             temp=zeros(1,1,Slice);
-            temp(1,1,:)=linspace(bas_start,bas_end,Slice);  %将bas的长度由两个bp点之间的距离大小延长到整个图像帧数大小
+            temp(1,1,:)=linspace(bas_start,bas_end,Slice);  %Extend the length of the bas from the size of the distance between two bp points to the size of the entire image frame size 
             bas_full(i,j,:)=temp;
         end
     end
-    % sumsig=squeeze(sum(Image(:,:,bp1/dt+1:bp2/dt),[1 2]));  %对图像按二维求和得到总的时间信号用于计算荧光猝灭导致的基线衰减的斜率
-    % sumsig_trend=sumsig-detrend(sumsig);
-    % dif=(sumsig_trend(end)-sumsig_trend(1))./((bp2-bp1)/dt-1)./(Height*Width);  %计算基线远端两点的差值，相当于计算其斜率，用于后续将基线延长到整个图像
-    % 
-    % 
-    % for i=1:Height
-    %     for j=1:Width
-    %         bas(i,j,:)=squeeze(Image(i,j,bp1/dt+1:bp2/dt))-detrend(squeeze(Image(i,j,bp1/dt+1:bp2/dt)));  %提取每个像素点的两个bp点之间的基线
-    %     end
-    % end
-    % bas_start=bas(:,:,1)-bp1/dt*dif;
-    % bas_end=bas(:,:,end)+(Slice-bp2/dt-1)*dif;
-    % temp=zeros(1,1,Slice);
-    % 
-    % for i=1:Height
-    %     for j=1:Width
-    %         temp(1,1,:)=linspace(bas_start(i,j),bas_end(i,j),Slice);  %将bas的长度由两个bp点之间的距离大小延长到整个图像帧数大小
-    %         bas_full(i,j,:)=temp;
-    %     end
-    % end
     clear temp;
-    delta_Image=(Image-bas_full)./bas_full;  %delta_Image为荧光变化量stack
-    maximg=max(delta_Image(:,:,5:14/dt),[],3); %看5~14s内荧光变化量的最大值(即最大刺激程度)
+    delta_Image=(Image-bas_full)./bas_full;  %delta_Image is the stack of changes in fluorescence
+    maximg=max(delta_Image(:,:,5:14/dt),[],3); %The maximum amount of fluorescence change within 5~14s (i.e. the maximum degree of stimulation)
     maximg(maximg<thresh_select)=0;
     mask=im2bw(maximg,0);
     pixnum=length(find(mask>0));
     
-    %最大荧光变化展示-快速版
-    % aver_50=mean(Image(:,:,10:50),3);%取前50张的平均作为用来减去的background
-    % subbackimg=Image-aver_50;%减去背景后的stack
+    % Maximum fluorescence change display-Rapid Edition
+    % aver_50=mean(Image(:,:,10:50),3);%Take the average of the first 50 sheets as the background for subtracting
+    % subbackimg=Image-aver_50;%The stack after subtracting the background
     % maximg=max(subbackimg,[],3);
     % maximg=maximg/mean(aver_50,'all');
     % maximg(maximg<thresh_select)=0;
@@ -119,35 +98,35 @@ for n=1:length(namelist)
     toc
     
     %%
-    %具体数据处理，包含信号提取，拟合曲线，滤波，目标函数计算以及绘图六个部分
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%根据框选的区域进行信号提取%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %Specific data processing, including signal extraction, curve fitting and plotting
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%The signal is extracted according to the selected area of the box%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     Signal=zeros(1,Slice);
-    Signal=squeeze(sum(Image,[1 2]));%信号提取
+    Signal=squeeze(sum(Image,[1 2]));%Signal extraction
     
     
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%拟合曲线%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    fitob=fit(t',Signal,'smoothingspline','SmoothingParam',0.99);%拟合曲线增大数据量，增加计算结果精确度,fitob为拟合之后的曲线模型
-    max_t0=find(Signal==max(Signal));%原始信号的峰值位置
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Fitting curve%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    fitob=fit(t',Signal,'smoothingspline','SmoothingParam',0.99);%The fitting curve increases the amount of data and the accuracy of calculation results. fitob is the curve model after fitting
+    max_t0=find(Signal==max(Signal));%The peak position of the original signal
     fitob2=fit(t(max_t0:end)',Signal(max_t0:end),'smoothingspline','SmoothingParam',0.5);
     tt=0:dtt:Slice*dt-dtt;
     tt_2=bp1:dtt:bp2-dtt;
     lent=length(tt);
     yy=feval(fitob,tt');
-    max_t=find(yy==max(yy));%拟合后信号的峰值位置
-    yy(max_t:end)=feval(fitob2,tt(max_t:end));%峰值靠后的信号用更平滑的曲线拟合
-    %用两个断点bp1,bp2间的信号来拟合基线
+    max_t=find(yy==max(yy));%Peak position of the signal after fitting
+    yy(max_t:end)=feval(fitob2,tt(max_t:end));%Signals with lower peaks are fitted with smoother curves
+    %The baseline is fitted with the signal between the two breakpoints bp1 and bp2
     bp_Sig=yy(bp1/dtt+1:bp2/dtt);
     Cor_Sig=detrend(bp_Sig);
-    bias=yy(bp1/dtt+1:bp2/dtt)-Cor_Sig; %拟合出的衰减曲线
+    bias=yy(bp1/dtt+1:bp2/dtt)-Cor_Sig; x
     fitob3=fit(tt_2',bias,'smoothingspline','SmoothingParam',1);
-    bias=feval(fitob3,tt');%拟合出来的基线bias
-    %还原矫正后的信号：
+    bias=feval(fitob3,tt');The fitted attenuation curve bas
+    %Restore the corrected signal：
     Cor_Sig=100.*(yy-bias)./bias;
     maxsig=max(Cor_Sig(5/dtt:20/dtt));
     
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%绘图%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Figure%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     figure(1);
-    set(figure(1),'position',[380,270,length(t)*6,450]);%figure窗口位置及大小调整
+    set(figure(1),'position',[380,270,length(t)*6,450]);%figure Window position and size adjustment
     subplot(1,2,2);  
     sigmin=min(Cor_Sig,[],'all');
     sigmax=max(Cor_Sig,[],'all');
